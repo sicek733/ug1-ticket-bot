@@ -15,6 +15,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
+// 🎫 أنواع التذاكر
 const ticketTypes = [
   { label: "🔔 الدعم الفني", value: "tech" },
   { label: "💚 تذكرة متجر", value: "store" },
@@ -30,9 +31,10 @@ const SUPPORT_ROLE = process.env.SUPPORT_ROLE;
 const ADMIN_ROLE = process.env.ADMIN_ROLE;
 
 client.once("ready", () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 });
 
+// إرسال لوحة التذاكر
 client.on("messageCreate", async (msg) => {
   if (msg.content === "!tickets") {
 
@@ -45,64 +47,101 @@ client.on("messageCreate", async (msg) => {
 
     const embed = new EmbedBuilder()
       .setTitle("🎫 نظام التذاكر")
-      .setDescription("اختر نوع التذكرة")
+      .setDescription("اختر نوع التذكرة من القائمة")
       .setColor(0x5865F2);
 
-    msg.channel.send({ embeds: [embed], components: [row] });
+    msg.channel.send({
+      embeds: [embed],
+      components: [row]
+    });
   }
 });
 
+// فتح التذكرة
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isStringSelectMenu()) return;
 
-  const type = interaction.values[0];
+  if (interaction.customId === "ticket_select") {
+    const type = interaction.values[0];
 
-  const existing = interaction.guild.channels.cache.find(c =>
-    c.name === `ticket-${interaction.user.id}`
-  );
+    const existing = interaction.guild.channels.cache.find(c =>
+      c.name === `ticket-${interaction.user.id}`
+    );
 
-  if (existing) {
-    return interaction.reply({ content: "عندك تذكرة مفتوحة", ephemeral: true });
+    if (existing) {
+      return interaction.reply({
+        content: "❌ عندك تذكرة مفتوحة",
+        ephemeral: true
+      });
+    }
+
+    const channel = await interaction.guild.channels.create({
+      name: `ticket-${interaction.user.id}`,
+      type: ChannelType.GuildText,
+      parent: process.env.CATEGORY_ID,
+      permissionOverwrites: [
+        {
+          id: interaction.guild.id,
+          deny: [PermissionsBitField.Flags.ViewChannel]
+        },
+        {
+          id: interaction.user.id,
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ]
+        },
+        ...(SUPPORT_ROLE ? [{
+          id: SUPPORT_ROLE,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        }] : []),
+        ...(ADMIN_ROLE ? [{
+          id: ADMIN_ROLE,
+          allow: [PermissionsBitField.Flags.ViewChannel]
+        }] : [])
+      ]
+    });
+
+    const closeBtn = new ButtonBuilder()
+      .setCustomId("close_ticket")
+      .setLabel("إغلاق ❌")
+      .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder().addComponents(closeBtn);
+
+    const embed = new EmbedBuilder()
+      .setTitle("🎫 تم فتح التذكرة")
+      .setDescription(`نوع التذكرة: **${type}**`)
+      .setColor(0x57F287);
+
+    channel.send({
+      content: `<@${interaction.user.id}>`,
+      embeds: [embed],
+      components: [row]
+    });
+
+    interaction.reply({
+      content: `✅ تم فتح التذكرة`,
+      ephemeral: true
+    });
   }
-
-  const channel = await interaction.guild.channels.create({
-    name: `ticket-${interaction.user.id}`,
-    type: ChannelType.GuildText,
-    parent: process.env.CATEGORY_ID,
-    permissionOverwrites: [
-      { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-      { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
-      ...(SUPPORT_ROLE ? [{ id: SUPPORT_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] }] : []),
-      ...(ADMIN_ROLE ? [{ id: ADMIN_ROLE, allow: [PermissionsBitField.Flags.ViewChannel] }] : [])
-    ]
-  });
-
-  const btn = new ButtonBuilder()
-    .setCustomId("close_ticket")
-    .setLabel("إغلاق")
-    .setStyle(ButtonStyle.Danger);
-
-  const row = new ActionRowBuilder().addComponents(btn);
-
-  channel.send({
-    content: `<@${interaction.user.id}> نوع التذكرة: ${type}`,
-    components: [row]
-  });
-
-  interaction.reply({ content: "تم فتح التذكرة", ephemeral: true });
 });
 
+// إغلاق التذكرة
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
   if (interaction.customId === "close_ticket") {
-    const log = interaction.guild.channels.cache.get(process.env.LOG_CHANNEL);
+    const logChannel = interaction.guild.channels.cache.get(process.env.LOG_CHANNEL);
 
-    if (log) {
-      log.send(`تم إغلاق: ${interaction.channel.name}`);
+    if (logChannel) {
+      logChannel.send(`📄 تم إغلاق: ${interaction.channel.name}`);
     }
 
-    await interaction.reply({ content: "جاري الإغلاق...", ephemeral: true });
+    await interaction.reply({
+      content: "⏳ جاري الإغلاق...",
+      ephemeral: true
+    });
 
     setTimeout(() => {
       interaction.channel.delete().catch(() => {});
